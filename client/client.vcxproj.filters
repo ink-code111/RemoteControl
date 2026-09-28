@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{2b5c1e20-0001-4b01-9d01-1a2b3c4d5e01}</UniqueIdentifier>
+      <Extensions>hpp;h</Extensions>
+    </Filter>
+    <Filter Include="client">
+      <UniqueIdentifier>{2b5c1e20-0002-4b02-9d02-1a2b3c4d5e02}</UniqueIdentifier>
+      <Extensions>cpp;hpp</Extensions>
+    </Filter>
+    <Filter Include="proto">
+      <UniqueIdentifier>{2b5c1e20-0003-4b03-9d03-1a2b3c4d5e03}</UniqueIdentifier>
+      <Extensions>h;fbs</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(RefactoredDir)client\main.cpp">
+      <Filter>client</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)client\async_client.cpp">
+      <Filter>client</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)client\remote_window.cpp">
+      <Filter>client</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\frame.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\proto_codec.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\tls.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(RefactoredDir)common\asio_common.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\clock.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\config.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\frame.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\input_types.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\logger.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\message.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\proto_codec.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\trace.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\tls.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\win_raii.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)client\async_client.hpp">
+      <Filter>client</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)client\remote_window.hpp">
+      <Filter>client</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)proto\generated\rc_protocol_generated.h">
+      <Filter>proto</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

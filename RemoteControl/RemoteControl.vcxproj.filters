@@ -1,0 +1,123 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{1a4b0d10-0001-4a01-9c01-0a1b2c3d4e01}</UniqueIdentifier>
+      <Extensions>hpp;h</Extensions>
+    </Filter>
+    <Filter Include="server">
+      <UniqueIdentifier>{1a4b0d10-0002-4a02-9c02-0a1b2c3d4e02}</UniqueIdentifier>
+      <Extensions>cpp;hpp</Extensions>
+    </Filter>
+    <Filter Include="proto">
+      <UniqueIdentifier>{1a4b0d10-0003-4a03-9c03-0a1b2c3d4e03}</UniqueIdentifier>
+      <Extensions>h;fbs</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="$(RefactoredDir)server\main.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\asio_server.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\session.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\session_registry.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\input_executor.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\delta_capturer.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\screen_capturer.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)server\dxgi_capturer.cpp">
+      <Filter>server</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\frame.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\proto_codec.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="$(RefactoredDir)common\tls.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(RefactoredDir)common\asio_common.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\clock.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\config.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\frame.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\input_types.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\logger.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\message.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\proto_codec.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\trace.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\tls.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)common\win_raii.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\asio_server.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\session.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\session_registry.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\input_sink.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\input_executor.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\screen_source.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\capture_internal.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\dpi_state.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\delta_capturer.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\screen_capturer.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)server\dxgi_capturer.hpp">
+      <Filter>server</Filter>
+    </ClInclude>
+    <ClInclude Include="$(RefactoredDir)proto\generated\rc_protocol_generated.h">
+      <Filter>proto</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

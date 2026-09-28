@@ -1,0 +1,22 @@
+{
+    "listen_host": "0.0.0.0",
+    "listen_port": 9999,
+    "log_file": "logs/server.log",
+    "log_level": "debug",
+
+    "io_threads": 0,
+    "max_clients": 32,
+    "idle_timeout_ms": 30000,
+    "screen_max_fps": 30,
+    "capture_cursor": true,
+    "capture_delta": true,
+    "dpi_aware": false,
+    "input_priority_capture": true,
+
+    "auth_token": "",
+
+    "tls_enable": false,
+    "tls_cert_file": "config/server_cert.pem",
+    "tls_key_file": "config/server_key.pem",
+    "tls_auto_self_signed": true
+}

@@ -1,0 +1,100 @@
+# ============================================================================
+# RemoteControl —— 上传前排除清单
+#
+# 设计原则：**只排除"能重建的东西"**。
+#   · 构建产物 / IDE 缓存 / 日志 / 运行时生成物 —— 一律排除
+#   · third_party/ 保留（项目设计为"依赖固化后离线构建"，见 tools/fetch_*.py）
+#   · 注意：`bin/` 一律写绝对路径形式（`/bin/`），否则会连
+#     `refactored/third_party/openssl/bin/` 一起排除 —— Git 无法用 `!` 恢复
+#     "父目录已被排除"的文件，这是个静默陷阱。
+# ============================================================================
+
+# ---------- 构建产物 ----------
+/bin/
+/client/x64/
+/refactored/build-ninja/
+/refactored/tests/experiments/out/
+# 下载来的二进制工具（flatc.exe 等）—— 可由 tools/build_flatc.py 重建。
+# 目前靠上面的 `*.exe` 兜住，但那是**巧合**：往里放个 .dll/.json 就会漏进仓库。
+/refactored/tools/bin/
+build/
+out/
+*.obj
+*.ilk
+*.pdb
+*.exp
+*.lib
+*.exe
+
+# ⚠️ third_party 里是**固化的预编译依赖**：openssl 的 libcrypto.lib / libssl.lib
+#    会被上面的 `*.lib` 排掉，导致 TLS 构建缺库。
+#    这条否定规则**必须放在上面那些后缀规则之后**才生效（Git 后者覆盖前者）。
+!refactored/third_party/**
+
+# 依赖脚本写下的"已完整"标记，内容是**本机下载缓存的绝对路径**
+# （形如 `<下载目录>\asio-1-30-2.tar.gz`）。它是本地产物、对 clone 的人无用，
+# 还会把自己的机器路径带进公开仓库 ⇒ 排除。必须放在上面那条 `!` 之后。
+refactored/third_party/**/.__ok
+
+# ⚠️ 提醒：**第三方库自带的 .gitignore 同样生效，且优先级高于本文件**
+#    （Git 规则：越深的 .gitignore 优先级越高，根目录的 `!` 覆盖不了它）。
+#    实测：flatbuffers 的 `grpc/examples/go/greeter/.gitignore` 里写着 `**/client`
+#    与 `**/server`，于是那 4 个 Go 示例文件**静默**不入库。它们与本项目构建无关
+#    （只用 flatbuffers 的 C++ runtime 头 + 本地编译 flatc），故不处理、仅记录。
+#    排查"某个文件怎么没进仓库"时，先想起这一条。
+*.ninja
+.ninja_deps
+.ninja_log
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# ---------- Visual Studio / IDE ----------
+/.vs/
+*.vcxproj.user
+*.suo
+*.sln.docstates
+*.VC.db
+*.opendb
+*.aps
+.idea/
+.vscode/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---------- 日志与临时验证产物 ----------
+logs/
+*.log
+_verify_*.log
+_race_close.log
+_perf/
+relay_summary.json
+
+# ---------- 运行时生成的证书与密钥（**绝不入库**）----------
+# 服务端在 tls_auto_self_signed=true 时会自签生成这两个文件
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+*.cer
+
+# ---------- 本项目私有工作区（内部笔记/决策记录，不公开）----------
+/.workbuddy/
+
+# ---------- 测试转储 / 临时目录 ----------
+_temp/
+*_temp/
+*.tmp
+soak_check/
+
+# ---------- 操作系统 / 编辑器 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~

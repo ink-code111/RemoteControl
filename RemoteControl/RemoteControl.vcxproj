@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ============================================================
+  服务端工程（rc_server）· 第二阶段：Asio 异步多客户端
+  ============================================================
+  与第一阶段的区别：
+    1. 会话层重写：
+         session.cpp          阻塞 socket + 每组收发线程 → strand + 异步读写
+         asio_server.cpp      新增：io_context 线程池 + async_accept + 优雅关闭
+         session_registry.cpp 新增：多客户端登记 / 并发限额 / 关闭回调
+       input_executor / screen_capturer 不再被 session 直接 new 出来，
+       而是实现 IInputSink / IScreenSource 接口后注入 —— 第三阶段换成
+       DXGI 抓屏或 H.264 编码时，只替换实现，会话层一行不动。
+    2. 协议层下沉到 common：
+         旧的 messages.hpp / packet.hpp / protocol.hpp / stream_decoder.hpp /
+         thread_safe_queue.hpp / winsock.hpp 已随第一阶段源码归档；
+         现在统一用 frame.cpp（8 字节定长帧头切流）+ proto_codec.cpp
+         （FlatBuffers 编解码），与客户端共用同一份实现。
+    3. 抓屏管线拆成三个翻译单元（2026-09-23，第三阶段第 1 步）：
+         delta_capturer.cpp   公共骨架：比对脏区 / 裁剪 / 编码 / 基准帧 / 统计
+         screen_capturer.cpp  GDI 后端：只实现 grab()（BitBlt + 光标合成）
+         dxgi_capturer.cpp    DXGI 后端：只实现 grab()（Desktop Duplication + 光标）
+       ⚠️ 三个都要列进下面的 ClCompile。少一个不会编译报错，而是**链接期**
+       报"无法解析的外部符号"（缺的是"另一个翻译单元里的定义"），
+       且 CMake 侧照常构建成功 —— 这类漂移由 tools/check_vcxproj.py 的
+       2c) 项（以 CMakeLists 为事实来源做交叉比对）负责拦住。
+    4. 链接库多两个（DXGI 后端需要，见 CMake 的 target_link_libraries）：
+         d3d11.lib  ID3D11Device / CopyResource / Map
+         dxgi.lib   IDXGIOutputDuplication / IDXGIOutput1
+       四个配置都要加，少配一个会在"VS 里切到那个配置"时才炸。
+    5. 新增依赖：standalone Asio 与 FlatBuffers（均为头文件）。
+       必须定义 ASIO_STANDALONE，否则 Asio 会去找 Boost 而编译失败。
+    6. 两个工程输出到同一个 bin 目录，rc_server 与 rc_client 可直接一起运行；
+       各自有独立 IntDir，两个 main.cpp 不会互相覆盖 .obj。
+  ============================================================
+-->
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{a6671ac8-0041-4d18-a6aa-2cafe8249135}</ProjectGuid>
+    <RootNamespace>rc_server</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>server</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros">
+    <!-- 用 $(MSBuildThisFileDirectory) 定位重构版源码：
+         无论从 .slnx 打开还是单独打开本 .vcxproj，路径都成立 -->
+    <RefactoredDir>$(MSBuildThisFileDirectory)..\refactored\</RefactoredDir>
+    <!-- 两个工程输出到同一个 bin 目录，方便 rc_server / rc_client 放在一起直接运行 -->
+    <OutDir>$(MSBuildThisFileDirectory)..\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\bin\$(Platform)\$(Configuration)\obj\$(ProjectName)\</IntDir>
+    <TargetName>rc_server</TargetName>
+    <!-- F5 调试时的工作目录设为输出目录：程序按相对路径读取 config/server.json，
+         输出目录下的 config/ 由 PostBuildEvent 自动复制过去 -->
+    <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <!-- 公共包含路径：业务头、协议生成代码、四个第三方依赖 -->
+    <RcCommonIncludes>$(RefactoredDir)common;$(RefactoredDir)server;$(RefactoredDir)proto\generated;$(RefactoredDir)third_party\spdlog\include;$(RefactoredDir)third_party\json\include;$(RefactoredDir)third_party\asio\include;$(RefactoredDir)third_party\flatbuffers\include;$(RefactoredDir)third_party\openssl\include</RcCommonIncludes>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <Optimization>Disabled</Optimization>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RcCommonIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(RefactoredDir)third_party\openssl\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;mswsock.lib;user32.lib;gdi32.lib;gdiplus.lib;d3d11.lib;dxgi.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not exist "$(OutDir)config" mkdir "$(OutDir)config"
+xcopy /Y /I /E "$(RefactoredDir)config\*" "$(OutDir)config\" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libssl-3-x64.dll" "$(OutDir)" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libcrypto-3-x64.dll" "$(OutDir)" &gt;nul</Command>
+      <Message>复制运行期配置 config/*.json 与 OpenSSL 运行库 DLL 到输出目录</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <Optimization>MaxSpeed</Optimization>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RcCommonIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(RefactoredDir)third_party\openssl\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;mswsock.lib;user32.lib;gdi32.lib;gdiplus.lib;d3d11.lib;dxgi.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not exist "$(OutDir)config" mkdir "$(OutDir)config"
+xcopy /Y /I /E "$(RefactoredDir)config\*" "$(OutDir)config\" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libssl-3-x64.dll" "$(OutDir)" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libcrypto-3-x64.dll" "$(OutDir)" &gt;nul</Command>
+      <Message>复制运行期配置 config/*.json 与 OpenSSL 运行库 DLL 到输出目录</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <Optimization>Disabled</Optimization>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RcCommonIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(RefactoredDir)third_party\openssl\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;mswsock.lib;user32.lib;gdi32.lib;gdiplus.lib;d3d11.lib;dxgi.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not exist "$(OutDir)config" mkdir "$(OutDir)config"
+xcopy /Y /I /E "$(RefactoredDir)config\*" "$(OutDir)config\" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libssl-3-x64.dll" "$(OutDir)" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libcrypto-3-x64.dll" "$(OutDir)" &gt;nul</Command>
+      <Message>复制运行期配置 config/*.json 与 OpenSSL 运行库 DLL 到输出目录</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <Optimization>MaxSpeed</Optimization>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;ASIO_STANDALONE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(RcCommonIncludes);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(RefactoredDir)third_party\openssl\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ws2_32.lib;mswsock.lib;user32.lib;gdi32.lib;gdiplus.lib;d3d11.lib;dxgi.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Manifest>
+      <EnableSegmentHeap>true</EnableSegmentHeap>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not exist "$(OutDir)config" mkdir "$(OutDir)config"
+xcopy /Y /I /E "$(RefactoredDir)config\*" "$(OutDir)config\" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libssl-3-x64.dll" "$(OutDir)" &gt;nul
+xcopy /Y /I "$(RefactoredDir)third_party\openssl\bin\libcrypto-3-x64.dll" "$(OutDir)" &gt;nul</Command>
+      <Message>复制运行期配置 config/*.json 与 OpenSSL 运行库 DLL 到输出目录</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(RefactoredDir)server\main.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\asio_server.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\session.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\session_registry.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\input_executor.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\delta_capturer.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\screen_capturer.cpp" />
+    <ClCompile Include="$(RefactoredDir)server\dxgi_capturer.cpp" />
+    <ClCompile Include="$(RefactoredDir)common\frame.cpp" />
+    <ClCompile Include="$(RefactoredDir)common\proto_codec.cpp" />
+    <ClCompile Include="$(RefactoredDir)common\tls.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="$(RefactoredDir)common\asio_common.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\clock.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\config.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\frame.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\input_types.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\logger.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\message.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\proto_codec.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\trace.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\tls.hpp" />
+    <ClInclude Include="$(RefactoredDir)common\win_raii.hpp" />
+    <ClInclude Include="$(RefactoredDir)proto\generated\rc_protocol_generated.h" />
+    <ClInclude Include="$(RefactoredDir)server\asio_server.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\session.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\session_registry.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\input_sink.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\input_executor.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\screen_source.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\capture_internal.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\dpi_state.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\delta_capturer.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\screen_capturer.hpp" />
+    <ClInclude Include="$(RefactoredDir)server\dxgi_capturer.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

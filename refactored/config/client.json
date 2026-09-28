@@ -1,0 +1,19 @@
+{
+    "server_host": "127.0.0.1",
+    "server_port": 9999,
+    "log_file": "logs/client.log",
+    "log_level": "debug",
+
+    "heartbeat_interval_ms": 2000,
+    "heartbeat_timeout_ms": 6000,
+    "hello_timeout_ms": 5000,
+    "reconnect_initial_delay_ms": 500,
+    "reconnect_max_delay_ms": 10000,
+    "reconnect_max_attempts": 0,
+    "target_fps": 30,
+
+    "auth_token": "",
+
+    "tls_enable": false,
+    "tls_pin_sha256": ""
+}
