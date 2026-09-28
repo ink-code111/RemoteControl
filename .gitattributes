@@ -1,0 +1,11 @@
+# 语言统计（GitHub linguist）
+#
+# 目的：让仓库页顶部的语言条反映"产品代码"，而不是测试脚手架。
+# 背景：refactored/tests/** 与 refactored/tools/** 是本项目的回归夹具与
+#       协议生成/依赖抓取脚本，Python 体积（约 0.78 MB）略大于被 linguist
+#       判定为产品代码的那部分 C++（约 0.75 MB），会把语言条显示成 Python。
+# 说明：这只是把这两个目录从**语言统计**中排除 —— 文件照常入库、照常可读、
+#       照常可被引用（README 里的 20 项回归仍然指向 refactored/tests/）。
+# 第三方无需在此声明：linguist 会按路径自动把 refactored/third_party/** 判为 vendored。
+refactored/tests/**  linguist-documentation
+refactored/tools/**  linguist-documentation
