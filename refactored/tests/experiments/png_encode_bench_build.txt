@@ -1,2 +1,0 @@
-png_encode_bench.cpp
-COMPILE_EXIT=0
