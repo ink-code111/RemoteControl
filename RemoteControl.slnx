@@ -1,7 +1,8 @@
 <Solution>
   <Configurations>
+    <!-- 只声明 x64：固化的 OpenSSL 只有 x64 库，Win32 配置必然链接失败，
+         不要给"第一次打开就点错平台"的机会。 -->
     <Platform Name="x64" />
-    <Platform Name="x86" />
   </Configurations>
   <Project Path="client/client.vcxproj" Id="429df21f-6515-4523-b7f7-101f25c76c50" />
   <Project Path="RemoteControl/RemoteControl.vcxproj" Id="a6671ac8-0041-4d18-a6aa-2cafe8249135" />
