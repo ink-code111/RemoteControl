@@ -92,7 +92,7 @@ add_subdirectory(tests)   # 端到端探针 rc_probe（-DRC_BUILD_TESTS=OFF 可�
 # ============================================================
 # 本地构建方法
 #
-# 【推荐】一键脚本（已在本机验证通过：18/18 步、零警告零错误）
+# 【推荐】一键脚本（cmake / ninja 自动探测，换机器不用改文件）
 #   refactored\build.bat
 #
 # 等价的手工命令：
@@ -117,7 +117,8 @@ add_subdirectory(tests)   # 端到端探针 rc_probe（-DRC_BUILD_TESTS=OFF 可�
 # 因此统一走 ninja + cmake/msvc-ninja-toolchain.cmake：
 # INCLUDE / LIB 由工具链文件直接写成 /I 与 /LIBPATH: 选项，
 # 不依赖 vcvarsall.bat，在任意 shell 里都能构建。
-# 换机器时只需改工具链文件顶部的 4 个路径。
+# 工具链文件与 build.bat 都会自己解析 cmake / ninja / MSVC / Windows SDK
+# （见各自头部说明），换机器**不需要改任何文件**；位置特殊时用 -D 覆盖即可。
 # ------------------------------------------------------------
 # 依赖管理备选：vcpkg（把上面的 FetchContent 换成 find_package）
 #   vcpkg install spdlog nlohmann-json

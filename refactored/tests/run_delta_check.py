@@ -106,6 +106,7 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -801,9 +802,17 @@ def main():
     # 它抓出来的帧比物理屏小，行程必须排在帧空间里。见 frame_space() 的注释。
     frm_w, frm_h = frame_space(phys_w, phys_h)
 
-    os.makedirs(PREFERRED_WORKDIR, exist_ok=True)
-    work = os.path.join(PREFERRED_WORKDIR, time.strftime("%Y%m%d-%H%M%S"))
-    os.makedirs(work, exist_ok=True)
+    # 一次性产物优先落 PREFERRED_WORKDIR；**那个盘不存在时回退到系统临时目录**，
+    # 而不是让夹具崩掉。这不是"顺手加固"——本项是定版回归的第 7 项（DELTA），
+    # 写死路径 + 没有出口 ⇒ 别人（机器上没有 E 盘）跑回归会**在这里直接失败**。
+    # 回退写法与 tests/run_frame_rate_probe.py 保持一致。
+    try:
+        os.makedirs(PREFERRED_WORKDIR, exist_ok=True)
+        work = os.path.join(PREFERRED_WORKDIR, time.strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(work, exist_ok=True)
+    except OSError:
+        work = tempfile.mkdtemp(prefix="rc_delta_", dir=os.environ.get("TEMP"))
+    print(f"[delta] 运行目录 {work}")
     # 变化源：一块 ~420x300 的纯色置顶窗口，横向平移。见 MotionWindow 的注释
     # （为什么不能用光标：点状源上 d1 与 d2 同量级，比值恒为 1，测不出来）。
     mw, mh = 420, 300

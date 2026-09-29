@@ -72,19 +72,35 @@
 > **不需要联网。** 第三方依赖已固化在 `refactored/third_party/`（含**预编译的 OpenSSL 3.5.0**），
 > 开箱即可离线构建。只有在该目录缺失时才需要跑 `tools/fetch_*.py` 重新拉取。
 
-### 需要按本机情况改的路径
+### 工具链路径：自动探测，换机器不用改文件
 
 CMake 的 VS 生成器在「VS 与 Windows SDK 装在非默认盘符 / 跨盘」的布局下探测不到 `cl.exe`，
 所以本项目统一走 **Ninja + 工具链文件**（把 `INCLUDE`/`LIB` 直接写成 `/I` 与 `/LIBPATH:` 选项，
-不依赖 `vcvarsall.bat`）。换机器时要改下面这些：
+不依赖 `vcvarsall.bat`）。
 
-| 文件 | 变量 | 本机（参考值） |
-|---|---|---|
-| `refactored/cmake/msvc-ninja-toolchain.cmake` | `RC_MSVC_ROOT` | `E:/vs/VC/Tools/MSVC/14.51.36231` |
-| 同上 | `RC_SDK_ROOT` | `D:/Windows Kits/10` |
-| 同上 | `RC_SDK_VER` | `10.0.26100.0` |
-| 同上 | `RC_NINJA` | `<VS>/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe` |
-| `refactored/build.bat` | `CMAKE_EXE` / `NINJA_EXE` | 同上 VS 目录下的 `cmake.exe` / `ninja.exe` |
+`cmake` / `ninja` / MSVC / Windows SDK 的路径**都由脚本自己解析**，固定三级顺序：
+
+| 级 | 手段 |
+|---|---|
+| ① | 显式指定：环境变量 `RC_CMAKE` `RC_NINJA` `RC_PY`；或 `-DRC_MSVC_ROOT=… -DRC_SDK_ROOT=… -DRC_SDK_VER=… -DRC_NINJA=…` |
+| ② | 文件顶部的默认值（`cmake/msvc-ninja-toolchain.cmake`）——**磁盘上确实存在才用** |
+| ③ | 自动探测：`vswhere`（VS 官方安装位置查询器，装在非默认盘符也认得出）→ 环境变量 `VCToolsInstallDir` / `WindowsSdkDir` → 常见安装目录 |
+
+三级都落空时会直接打印"缺什么、该装什么、怎么指定路径"，而不是让 CMake 抛那句
+`No CMAKE_CXX_COMPILER could be found`（它不指向任何可操作的动作）。
+
+> 作者本机的布局是 VS 在 `E:\vs`、Windows SDK 在 `D:\Windows Kits`（都不在默认盘符）。
+> 这两个路径就是第 ② 级的默认值 —— **别人不需要改**：在别人的机器上它们不存在，
+> 会自动落到第 ③ 级去探测。
+
+想看它到底解析到了什么：
+
+```bat
+build.bat -DCMAKE_MESSAGE_LOG_LEVEL=STATUS          :: 看 [toolchain] 开头的行
+```
+```bash
+RC_PRINT_TOOLCHAIN=1 bash tests/run_all_verify.sh   # 只打印解析结果，不跑回归
+```
 
 ### 构建（命令行）
 
@@ -165,8 +181,21 @@ build-ninja\client\rc_client.exe config\client.json
 bash refactored/tests/run_all_verify.sh
 ```
 
-**退出码是三态，不是布尔**：`0` = 通过，`1` = 不通过（机制真的失效），`2` = **没测到**（前置不变式不成立，本轮无判别力）。
+`cmake` / `ninja` / `python3` 会自动探测（可用环境变量 `RC_CMAKE` / `RC_NINJA` / `RC_PY` 覆盖）。
+若 `build-ninja/` 还没配置过（**全新 clone 就是这样**），脚本会先按 `build.bat` 的等价命令配置一次，
+再编译 —— 不需要手动先跑一遍构建。
+
+判定方式：**逐项读输出里的 `*_EXIT=` 行**（共 20 行，全 `0` 才算全绿）。每项是**三态**而非布尔：
+`0` = 通过，`1` = 不通过（机制真的失效），`2` = **没测到**（前置不变式不成立，本轮无判别力）。
 **看到 `2` 要先读它给出的理由，不要当成「低频失败」重跑。**
+
+> 屏幕上的 `[x/17]` 是**段号**，不是判据行号：17 段产出 20 行 `*_EXIT=`（因为 DELTA 段要跑
+> `gdi` / `dxgi` 两个后端、DPI 预检与收尾各算一行）。两个数都真，量的是不同的东西。
+
+> ⚠️ 脚本**整体**的退出码目前恒为 `0`（末尾是一条 `echo`），因此它**不能直接当 CI 判据**；
+> 判通过与否必须逐项读 `*_EXIT=`。这是已知待办，不是设计意图。
+
+只想看工具链解析结果（不跑回归）：`RC_PRINT_TOOLCHAIN=1 bash refactored/tests/run_all_verify.sh`。
 
 ⚠️ 跑之前注意：
 
@@ -174,9 +203,10 @@ bash refactored/tests/run_all_verify.sh
 - AUTH / TLS / ACL 三项会各弹 4～6 次客户端窗口。
 - **跑回归或长跑期间不要并行跑别的进程**：它们都建同名窗口类，且 CPU 负载会把判据推出健康带、产出假红。
 - **一次性产物默认落在 `E:\WBdata\_temp\`**（各脚本顶部的 `PREFERRED_WORKDIR`；作者本机的约定是"项目目录只留能长期复用的东西"）。
-  多数脚本留有出口（`--workdir` / `--work` / `--out`），抓屏类脚本在目录不可写时还会自动回退到系统临时目录；
-  **少数写死、无出口**：`run_delta_check.py`、`run_tcp_nodelay_check.py`、`tests/experiments/partial_repaint_ab.py`
-  ⇒ 没有 E 盘时，把这几个文件里的路径换成任意可写目录即可（其余脚本无需改动）。
+  多数脚本留有出口（`--workdir` / `--work` / `--out`），抓屏类脚本在目录建不出来时还会**自动回退到系统临时目录**
+  —— 包括回归第 7 项要用的 `run_delta_check.py`（它原先写死且无出口，会让**没有 E 盘的机器在第 7 项直接失败**，2026-09-29 已补回退，并打印实际运行目录）。
+  仍写死、无出口的只剩两个**不在回归路径上**的专项脚本：`run_tcp_nodelay_check.py`、`tests/experiments/partial_repaint_ab.py`
+  ⇒ 需要用到它们时，把那两个文件里的路径改成任意可写目录即可。
 
 单项与专项（在 `refactored/` 下执行）：
 

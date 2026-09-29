@@ -24,13 +24,154 @@
 #    HIGHDPIAWARE，此后该 exe 每次启动都是 DPI-aware —— 配置 dpi_aware=false 被架空，
 #    帧尺寸随"运行顺序"变化。这种污染在日志里看不出来，所以每轮开跑前先查/清一次。
 #    （见 tests/check_dpi_override.py 的说明）
-export PATH="/c/Users/ASUS/.workbuddy/binaries/PortableGit/versions/1.2.0/bin:/c/Users/ASUS/.workbuddy/binaries/PortableGit/versions/1.2.0/usr/bin:/c/Windows/System32:/c/Windows:/c/Windows/System32/WindowsPowerShell/v1.0:$PATH"
+# ============================================================================
+# 工具链解析（2026-09-29 重写）
+#
+# 从前这里写死了作者本机的 5 处绝对路径（PortableGit 的 PATH、cmake、ninja、
+# python，以及 cd 的目标目录）—— 别人 clone 下来，回归的**第一条命令就失败**，
+# 而构建入口（build.bat）是有出口的，于是表现为"构建能过、回归第一步就崩"。
+#
+# 现在改成三级查找，顺序固定：
+#   ① 环境变量 RC_CMAKE / RC_NINJA / RC_PY
+#   ② PATH 上的 cmake / ninja / python3 / python / py
+#   ③ 常见安装位置的绝对路径（VS 自带的 CMake+Ninja —— 用 vswhere 问出 VS 装在哪，
+#      装在非默认盘符也问得出来；CMake 官方安装目录；python.org 默认安装目录）
+# 三级都落空 → 说清"缺什么、怎么补"，然后 **exit 98**。
+# ⚠️ 缺工具时绝不 exit 0：那会让"根本没跑起来"冒充"跑绿了"。
+#
+# 只看解析结果（不跑回归）：  RC_PRINT_TOOLCHAIN=1 bash tests/run_all_verify.sh
+# 手动指定：                  RC_CMAKE=... RC_NINJA=... RC_PY=... bash tests/run_all_verify.sh
+# ============================================================================
 
-CMAKE="/e/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
-NINJA="/e/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
-PY="/c/Users/ASUS/.workbuddy/binaries/python/versions/3.13.12/python.exe"
+# 项目根按**脚本自身位置**推导：不依赖当前工作目录、不依赖盘符
+# （原来是写死的 cd /e/VsProject/RemoteControl/refactored）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.." || { echo "❌ 无法进入 refactored/：$SCRIPT_DIR/.."; exit 99; }
 
-cd /e/VsProject/RemoteControl/refactored || exit 99
+# 解析一个工具：
+#   $1 = 用途（报错时显示）   $2 = 环境变量值   $3 = 候选命令名（空格分隔）
+#   $4... = 候选绝对路径
+# 命中即把一个可执行路径打到 stdout。
+resolve_tool() {
+  local purpose="$1" env_val="$2" names="$3"
+  shift 3
+  if [ -n "$env_val" ]; then
+    if [ -x "$env_val" ]; then printf '%s\n' "$env_val"; return 0; fi
+    echo "❌ $purpose：环境变量指向的文件不存在或不可执行：$env_val" >&2
+    return 1
+  fi
+  local n p c
+  for n in $names; do
+    p="$(command -v "$n" 2>/dev/null)"
+    # WindowsApps 下的 python.exe 是"微软商店"的占位程序，能执行但只会弹商店 ——
+    # 它不是真的解释器，选中它会让后面每条夹具都报一句看不懂的错。直接排除。
+    case "$p" in */WindowsApps/*|*/WindowsApps) continue ;; esac
+    if [ -n "$p" ] && [ -x "$p" ]; then printf '%s\n' "$p"; return 0; fi
+  done
+  for c in "$@"; do
+    if [ -x "$c" ]; then printf '%s\n' "$c"; return 0; fi
+  done
+  return 1
+}
+
+# ---- Visual Studio 装在哪：vswhere 是 VS 官方提供的安装位置查询器 ----
+# 它的价值在于"装在非默认盘符也认得出来"（本机 VS 就在 E:\vs）。
+VS_CMAKE=""
+VS_NINJA=""
+VSWHERE="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+if [ -x "$VSWHERE" ]; then
+  # 注意去掉末尾的 CR：Windows 程序的输出是 CRLF，带着 \r 的路径拼出来全是错的
+  # ⚠️ 这一段**只用 bash 内建**，不用 tr/sed —— 原来的脚本靠一行写死的
+  # `export PATH=...` 保底基本 POSIX 工具，那行随硬编码路径一起删掉了，
+  # 所以这里不能让"PATH 不完整"变成一个隐形前置条件（那会表现为
+  # "明明装了 cmake 却说找不到"）。
+  _vs_out="$("$VSWHERE" -latest -products '*' -property installationPath 2>/dev/null)"
+  VSROOT_RAW=""
+  IFS= read -r VSROOT_RAW <<<"$_vs_out"      # 取第一行（内建）
+  VSROOT_RAW="${VSROOT_RAW%$'\r'}"           # 去掉 CRLF 里的 \r（内建）
+  if [ -n "$VSROOT_RAW" ]; then
+    # Windows 路径 → bash 路径（cygpath 是 Git Bash 自带的；没有就手工转）
+    if command -v cygpath >/dev/null 2>&1; then
+      VSROOT_BASH="$(cygpath -u "$VSROOT_RAW" 2>/dev/null)"
+    else
+      # ⚠️ 只用 bash 内建把 "X:\a\b" 转成 "/x/a/b"，别无谓地依赖 tr/sed。
+      # ⚠️ 顺序很重要：**先切片、再替换**。反过来（先在整串上做 \\ → / 的替换，
+      #    再去 ${x:2} 切片）会因为替换后下标 2 恰好就是那个 "/"，拼出 "/e//vs"
+      #    这种双斜杠 —— 本脚本初版正是这么错的（见 MEMORY-traps 的「换机器可移植性」节）。
+      # 非盘符形态（UNC 的 \\server\share 等）这里不猜，交给下面的候选列表。
+      if [ "${VSROOT_RAW:1:1}" = ":" ]; then
+        _drive="${VSROOT_RAW:0:1}"       # "E:\vs" → "E"
+        _tail="${VSROOT_RAW:2}"          # "E:\vs" → "\vs"
+        _tail="${_tail//\\//}"           # "\vs"  → "/vs"
+        VSROOT_BASH="/${_drive,,}${_tail}"   # "E:\vs" → "/e/vs"
+      fi
+    fi
+    if [ -x "$VSROOT_BASH/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe" ]; then
+      VS_CMAKE="$VSROOT_BASH/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+    fi
+    if [ -x "$VSROOT_BASH/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" ]; then
+      VS_NINJA="$VSROOT_BASH/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+    fi
+  fi
+fi
+
+_rc_cmake_cands=()
+if [ -n "$VS_CMAKE" ]; then _rc_cmake_cands+=("$VS_CMAKE"); fi
+_rc_cmake_cands+=("/c/Program Files/CMake/bin/cmake.exe" "/c/Program Files (x86)/CMake/bin/cmake.exe" "/e/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe")
+
+_rc_ninja_cands=()
+if [ -n "$VS_NINJA" ]; then _rc_ninja_cands+=("$VS_NINJA"); fi
+_rc_ninja_cands+=("/c/Program Files/CMake/bin/ninja.exe" "/c/Program Files (x86)/CMake/bin/ninja.exe" "/e/vs/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe")
+
+CMAKE="$(resolve_tool "构建工具 cmake" "${RC_CMAKE:-}" "cmake cmake.exe" "${_rc_cmake_cands[@]}")"
+NINJA="$(resolve_tool "构建后端 ninja" "${RC_NINJA:-}" "ninja ninja.exe" "${_rc_ninja_cands[@]}")"
+
+# python 的兜底候选：按"任意用户"的通配写（python.org 的默认安装位置就是
+# %LOCALAPPDATA%\Programs\Python\Python3xx\）—— 不要写死某个用户名，
+# 那等于把本机路径带进公开仓库。
+_rc_py_cands=()
+_rc_py_cands+=(/c/Python313/python.exe /c/Python312/python.exe /c/Python311/python.exe)
+_rc_py_cands+=(/c/Users/*/AppData/Local/Programs/Python/Python3*/python.exe)
+_rc_py_cands+=(/c/ProgramData/miniconda3/python.exe /c/ProgramData/anaconda3/python.exe)
+PY="$(resolve_tool "Python 3（回归夹具用，只依赖标准库）" "${RC_PY:-}" "python3 python py" "${_rc_py_cands[@]}")"
+
+if [ -n "${RC_PRINT_TOOLCHAIN:-}" ]; then
+  echo "脚本位置 : $SCRIPT_DIR"
+  echo "工作目录 : $(pwd)"
+  echo "cmake    : ${CMAKE:-（未找到）}"
+  echo "ninja    : ${NINJA:-（未找到）}"
+  echo "python   : ${PY:-（未找到）}"
+  if [ -n "$PY" ];   then "$PY" --version 2>&1 | sed 's/^/           /'; fi
+  if [ -n "$CMAKE" ]; then "$CMAKE" --version 2>&1 | sed -n '1p;s/^/           /'; fi
+  if [ -n "$NINJA" ]; then "$NINJA" --version 2>&1 | sed 's/^/           /'; fi
+  exit 0
+fi
+
+_rc_missing=""
+[ -n "$CMAKE" ] || _rc_missing="$_rc_missing cmake"
+[ -n "$NINJA" ] || _rc_missing="$_rc_missing ninja"
+[ -n "$PY" ]    || _rc_missing="$_rc_missing python3"
+if [ -n "$_rc_missing" ]; then
+  echo "❌ 本机缺少回归所需工具：$_rc_missing"
+  echo "   （脚本已按 环境变量 RC_* → PATH → 常见安装位置 三级查找，都没找到）"
+  echo
+  echo "   缺 cmake / ninja：装 CMake（https://cmake.org/download/），或装 Visual Studio 时"
+  echo "                     勾选「使用 C++ 的桌面开发」——它自带 cmake 与 ninja。"
+  echo "   缺 python3      ：装 Python 3（https://www.python.org/downloads/）。"
+  echo
+  echo "   已经装了但位置特殊，直接指定即可（不必改本脚本）："
+  echo "     RC_CMAKE=/c/Program\\ Files/CMake/bin/cmake.exe \\"
+  echo "     RC_NINJA=/c/Program\\ Files/CMake/bin/ninja.exe \\"
+  echo "     RC_PY=/c/Python313/python.exe \\"
+  echo "     bash tests/run_all_verify.sh"
+  echo
+  echo "   想看它都试过哪些位置： RC_PRINT_TOOLCHAIN=1 bash tests/run_all_verify.sh"
+  exit 98
+fi
+
+echo "工具链：cmake=$CMAKE"
+echo "        ninja=$NINJA"
+echo "        python=$PY"
 
 echo "===== [0/17] DPI COMPAT-LAYER PREFLIGHT ====="
 "$PY" tests/check_dpi_override.py --clean
@@ -38,6 +179,19 @@ echo "DPI_PREFLIGHT_EXIT=$?"
 
 echo
 echo "===== [1/17] BUILD ====="
+# 全新的 clone 里没有 build-ninja/（构建产物不入库），直接 --build 会失败。
+# 所以缺配置时先按 build.bat 的等价命令配置一次。
+# ⚠️ 这里**不新增判据行**：配置失败会在下面的 BUILD_EXIT 上体现，
+#    凭空多一行 *_EXIT= 会破坏"20 行判据"这个口径。
+if [ ! -f build-ninja/CMakeCache.txt ]; then
+  echo "[verify] 没找到 build-ninja/CMakeCache.txt —— 先配置一次（等价于 build.bat 的第 1 步）…"
+  if ! "$CMAKE" -S . -B build-ninja -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE=cmake/msvc-ninja-toolchain.cmake \
+        -DCMAKE_MAKE_PROGRAM="$NINJA" \
+        -DCMAKE_BUILD_TYPE=Release ; then
+    echo "[verify] ⚠️ 配置这一步就失败了，下面的 BUILD 必然失败 —— 原因见上面的 cmake 输出。"
+  fi
+fi
 "$CMAKE" --build build-ninja -j 8
 echo "BUILD_EXIT=$?"
 
