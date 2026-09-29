@@ -551,7 +551,12 @@ def main():
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
 
-    os.makedirs(args.work, exist_ok=True)
+    # 与其他夹具同一纪律：默认目录建不出来（没有对应盘符）时回退系统临时目录。
+    try:
+        os.makedirs(args.work, exist_ok=True)
+    except OSError:
+        args.work = tempfile.mkdtemp(prefix="rc_soak_", dir=os.environ.get("TEMP"))
+        print(f"[soak] 默认目录建不出来，回退到 {args.work}")
     tag = args.tag or ("rc" if args.reverse_control else "main")
     seconds = 90.0 if args.reverse_control else args.seconds
     leak = 2 if args.reverse_control else 0

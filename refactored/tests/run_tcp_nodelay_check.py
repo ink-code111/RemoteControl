@@ -64,6 +64,7 @@ import socket
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import nullcontext
 
@@ -476,9 +477,15 @@ def main():
     mx0 = max(margin, int(frm_w * 0.06))
     mx1 = max(mx0 + mw, min(frm_w - mw - margin, int(frm_w * 0.80)))
 
-    os.makedirs(PREFERRED_WORKDIR, exist_ok=True)
-    parent_work = os.path.join(PREFERRED_WORKDIR, time.strftime("%Y%m%d-%H%M%S"))
-    os.makedirs(parent_work, exist_ok=True)
+    # 与其他夹具同一纪律：默认目录建不出来（没有对应盘符）时回退系统临时目录，
+    # 不让"作者本机的目录约定"变成别人机器上的崩溃点。
+    try:
+        os.makedirs(PREFERRED_WORKDIR, exist_ok=True)
+        parent_work = os.path.join(PREFERRED_WORKDIR, time.strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(parent_work, exist_ok=True)
+    except OSError:
+        parent_work = tempfile.mkdtemp(prefix="rc_nodelay_", dir=os.environ.get("TEMP"))
+        print(f"[nodelay] 默认目录建不出来，回退到 {parent_work}")
 
     print(f"[nodelay] 运行目录 {parent_work}")
     print(f"[nodelay] 物理屏 {phys_w}x{phys_h}；行程排在 {frm_w}x{frm_h} 内"

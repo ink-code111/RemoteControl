@@ -36,6 +36,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from ctypes import wintypes
 
@@ -375,7 +376,16 @@ def run_checks(args, phys_w, phys_h):
     print(f"[cursor] 服务端 {server_exe}")
     print(f"[cursor] 工作目录 {args.workdir}\n")
 
-    os.makedirs(args.workdir, exist_ok=True)
+    # 一次性产物优先落 PREFERRED_WORKDIR；那个盘不存在时回退到系统临时目录，
+    # 而不是让夹具崩掉 —— 本项是定版回归的第 2 项（CURSOR），
+    # 写死路径 + 无回退 ⇒ 别人（机器上没有 E 盘）跑回归会在这里直接失败。
+    # 回退写法与 tests/run_delta_check.py 保持一致。
+    try:
+        os.makedirs(args.workdir, exist_ok=True)
+    except OSError:
+        args.workdir = tempfile.mkdtemp(prefix="rc_cursor_", dir=os.environ.get("TEMP"))
+        print(f"[cursor] 默认目录建不出来（机器上没有对应盘符时常见），回退到 {args.workdir}")
+
     # A/C 都是 off（互为噪声对照），B 是 on。三者同时在线，并发取帧。
     servers = []
     try:

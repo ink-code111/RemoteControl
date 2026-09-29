@@ -85,6 +85,9 @@ def main():
         return 2
 
     host, port = load_endpoint()
+    # logs/ 被 .gitignore 全局排除，全新 clone 后不存在 —— 下面的 stdout 重定向
+    # 是直接 open() 写入，缺目录会 FileNotFoundError（回归第 3 项的必踩坑）。
+    os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
     log_file = os.path.join(ROOT, "logs", "server.log")
 
     # 不去删除旧日志（删文件是不可逆操作，也容易被安全策略拦下），

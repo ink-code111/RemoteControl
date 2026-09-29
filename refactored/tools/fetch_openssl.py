@@ -22,6 +22,7 @@ import hashlib
 import os
 import shutil
 import sys
+import tempfile
 import time
 import urllib.request
 import zipfile
@@ -29,7 +30,15 @@ import zipfile
 PROJECT     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THIRD_PARTY = os.path.join(PROJECT, "third_party")
 DEST        = os.path.join(THIRD_PARTY, "openssl")
-DOWNLOAD_DIR = r"E:\WBdata\_temp"          # 下载缓存统一放这里（用户约定）
+# 下载缓存优先落作者本机的约定目录；别人的机器上没有这块盘时回退系统临时目录
+# （third_party 已入库，本脚本只在依赖缺失时才需要跑，不该再要求目录约定一致）。
+try:
+    os.makedirs(r"E:\WBdata\_temp", exist_ok=True)
+    DOWNLOAD_DIR = r"E:\WBdata\_temp"          # 下载缓存统一放这里（用户约定）
+except OSError:
+    DOWNLOAD_DIR = os.path.join(tempfile.gettempdir(), "rc_downloads")
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    print(f"[fetch] 约定目录建不出来，下载缓存回退到 {DOWNLOAD_DIR}")
 
 URL = "https://download.firedaemon.com/FireDaemon-OpenSSL/openssl-3.5.0.zip"
 # 2026-09-25 实测下载所得（41,668,659 字节）。厂商若重新上传会变 —— 那时用 --skip-verify。

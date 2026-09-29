@@ -16,6 +16,7 @@
 #include <spdlog/spdlog.h>
 
 #include <chrono>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,6 +51,18 @@ inline void init_logger(const std::string& log_file, spdlog::level::level_enum l
     // 不是控制台就只写文件。
     if (stdout_is_console()) {
         sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
+    }
+
+    // 【为什么在这里建父目录】logs/ 被 .gitignore 的全局 `logs/` 规则排除，
+    // 全新 clone 后并不存在；而 spdlog 的 file sink **不会创建父目录**，
+    // 缺目录会让 init_logger 在启动时直接抛异常 —— 服务端 exit 1、客户端弹
+    // "启动失败"，陌生人按 README 跑第一条命令就会踩中（2026-09-29 确认）。
+    // 这里先把父目录建出来；真建不出来（权限/路径非法）时不吞错，
+    // 让下面的 sink 抛出它自己的异常，错误信息更贴近真实原因。
+    const auto log_dir = std::filesystem::path(log_file).parent_path();
+    if (!log_dir.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(log_dir, ec);
     }
 
     sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(

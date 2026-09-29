@@ -20,15 +20,24 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FB_SRC = os.path.join(PROJECT, "third_party", "flatbuffers")
 OUT_DIR = os.path.join(PROJECT, "tools", "bin")
 FLATC = os.path.join(OUT_DIR, "flatc.exe")
-BUILD_DIR = r"E:\WBdata\_temp\build-flatc"
 
-CMAKE = r"E:\vs\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
-NINJA = r"E:\vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
+# 构建目录优先落作者本机的约定目录；别人的机器上没有这块盘时回退系统临时目录。
+try:
+    os.makedirs(r"E:\WBdata\_temp", exist_ok=True)
+    BUILD_DIR = os.path.join(r"E:\WBdata\_temp", "build-flatc")
+except OSError:
+    BUILD_DIR = os.path.join(tempfile.gettempdir(), "rc_build-flatc")
+
+# cmake / ninja 优先取 PATH 上的（别人的机器没装在 E:\vs 这个位置）；
+# PATH 上没有再落到作者本机的 VS 自带副本 —— 两头都覆盖。
+CMAKE = shutil.which("cmake") or r"E:\vs\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+NINJA = shutil.which("ninja") or r"E:\vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe"
 TOOLCHAIN = os.path.join(PROJECT, "cmake", "msvc-ninja-toolchain.cmake")
 
 

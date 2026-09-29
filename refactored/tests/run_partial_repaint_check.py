@@ -255,7 +255,13 @@ def main():
         base = args.workdir
         os.makedirs(base, exist_ok=True)
     else:
-        base = tempfile.mkdtemp(prefix="partial_repaint_", dir=r"E:\WBdata\_temp")
+        # 默认落作者本机的约定目录；盘不存在时回退系统临时目录，
+        # 本项是定版回归的第 15 项（PARTIAL_REPAINT），写死 + 无回退会让别人直接失败。
+        try:
+            base = tempfile.mkdtemp(prefix="partial_repaint_", dir=r"E:\WBdata\_temp")
+        except OSError:
+            base = tempfile.mkdtemp(prefix="partial_repaint_")
+        print(f"[partial] 默认目录建不出来，回退到 {base}")
     print(f"[partial] 工作目录 {base}")
 
     # ---------------------------------------------------------------- 反向对照

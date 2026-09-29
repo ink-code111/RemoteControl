@@ -52,11 +52,15 @@ print("原始文件 --selftest：", end="")
 r = subprocess.run([PY, SRC, "--selftest"], capture_output=True, text=True)
 print(f"exit={r.returncode}  {r.stdout.strip().splitlines()[-1][:70] if r.stdout.strip() else ''}")
 
-# 【2026-09-27】必须**显式给 dir**：`tempfile.mkdtemp()` 不带 dir 时落在 `%TEMP%`
-# ——也就是 **C 盘**（`C:\Users\ASUS\AppData\Local\Temp`），违反本项目"临时产物一律进
-# `E:\WBdata\_temp`"的目录约定（见用户级记忆）。虽然下面有 `shutil.rmtree`，但它是
-# `ignore_errors=True` ⇒ 异常路径下会**静默残留**在 C 盘，而且不报错。
-d = tempfile.mkdtemp(prefix="mut_inlat_", dir=r"E:\WBdata\_temp")
+# 【2026-09-27】优先用**显式给 dir**的 E 盘约定目录（作者本机"临时产物不进 C 盘"）；
+# 2026-09-29 补回退：别人的机器上没有这个盘/目录，mkdir 失败就落到 %TEMP%，
+# 不能因为目录约定让夹具崩掉。`shutil.rmtree(ignore_errors=True)` 在异常路径下
+# 会**静默残留**临时目录且不报错 —— 这是上面那条约定本来想避免的，两害取其轻。
+try:
+    d = tempfile.mkdtemp(prefix="mut_inlat_", dir=r"E:\WBdata\_temp")
+except OSError:
+    d = tempfile.mkdtemp(prefix="mut_inlat_")
+    print(f"[mut] E 盘约定目录建不出来，回退到 {d}")
 ok = True
 for i, (name, code) in enumerate(muts):
     p = os.path.join(d, f"m{i}.py")

@@ -165,7 +165,12 @@ def one(name, motion, partial, seconds, server_exe, client_exe, base):
 
 def main():
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 16
-    base = tempfile.mkdtemp(prefix="pr_ab_", dir=r"E:\WBdata\_temp")
+    # 与其他夹具同一纪律：约定目录建不出来（没有对应盘符）时回退系统临时目录。
+    try:
+        base = tempfile.mkdtemp(prefix="pr_ab_", dir=r"E:\WBdata\_temp")
+    except OSError:
+        base = tempfile.mkdtemp(prefix="pr_ab_")
+        print(f"[ab] 约定目录建不出来，回退到 {base}")
     print(f"[ab] 工作目录 {base}；每档每轮 {n}s；几何与 dirty_ratio_probe 逐字相同")
     print(f"[ab] {'档':<7}{'服务端脏区均值':>13} | {'实画面积P50 关→开':>26} | "
           f"{'StretchBlt P50 关→开':>28} | {'每帧省':>8}")

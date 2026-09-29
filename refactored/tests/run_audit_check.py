@@ -107,6 +107,7 @@ import re
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -689,7 +690,15 @@ def main():
         print("[acl]   先重新构建（cmake --build build-ninja）再跑本判据。")
         return 2
 
-    os.makedirs(args.workdir, exist_ok=True)
+    # 一次性产物优先落 PREFERRED_WORKDIR；那个盘不存在时回退到系统临时目录，
+    # 而不是让夹具崩掉 —— 本项是定版回归的第 16 项（ACL），
+    # 写死路径 + 无回退 ⇒ 别人（机器上没有 E 盘）跑回归会在这里直接失败。
+    # 回退写法与 tests/run_delta_check.py 保持一致。
+    try:
+        os.makedirs(args.workdir, exist_ok=True)
+    except OSError:
+        args.workdir = tempfile.mkdtemp(prefix="rc_acl_", dir=os.environ.get("TEMP"))
+        print(f"[acl] 默认目录建不出来（机器上没有对应盘符时常见），回退到 {args.workdir}")
 
     print(f"[acl] 服务端 {server_exe}")
     print(f"[acl] 客户端 {client_exe}")

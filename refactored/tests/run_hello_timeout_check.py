@@ -26,6 +26,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -131,7 +132,13 @@ def main():
         return 2
 
     workdir = args.workdir
-    os.makedirs(workdir, exist_ok=True)
+    # 与其他夹具同一纪律：默认目录建不出来（没有对应盘符）时回退系统临时目录，
+    # 不让"作者本机的目录约定"变成别人机器上的崩溃点。
+    try:
+        os.makedirs(workdir, exist_ok=True)
+    except OSError:
+        workdir = tempfile.mkdtemp(prefix="rc_hello_timeout_", dir=os.environ.get("TEMP"))
+        print(f"[hello-timeout] 默认目录建不出来，回退到 {workdir}")
     server = SilentServer().start()
     cfg_path = write_test_config(workdir, server.port)
     log_path = os.path.join(workdir, "logs", "client.log")
