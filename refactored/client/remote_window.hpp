@@ -171,7 +171,7 @@ private:
 
     void send_mouse_action(rc::input::MouseAction action, LPARAM lp);
     void send_mouse_move_throttled(LPARAM lp);
-    void send_wheel(WPARAM wp);
+    void send_wheel(WPARAM wp, LPARAM lp);
     void send_key(int vk, bool up);
     bool map_to_remote(LPARAM lp, int& out_x, int& out_y);
     /// 标题是三个状态的合成结果（已连接 / 中间态 / 断开+原因），统一在这里渲染

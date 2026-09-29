@@ -579,7 +579,7 @@ LRESULT RemoteWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     // ---- 鼠标事件：全部收敛到 send_mouse_action，消除旧版六段复制粘贴 ----
     case WM_MOUSEMOVE:      send_mouse_move_throttled(lp);                        return 0;
-    case WM_MOUSEWHEEL:     send_wheel(wp);                                       return 0;
+    case WM_MOUSEWHEEL:     send_wheel(wp, lp);                                   return 0;
     case WM_LBUTTONDOWN:
         SetCapture(hwnd);
         send_mouse_action(rc::input::MouseAction::kLDown, lp);
@@ -768,9 +768,11 @@ void RemoteWindow::send_mouse_move_throttled(LPARAM lp) {
     send_mouse_action(rc::input::MouseAction::kMove, lp);
 }
 
-void RemoteWindow::send_wheel(WPARAM wp) {
-    // 滚轮消息的坐标是屏幕坐标，需要先转成客户区坐标
-    POINT pt{GET_X_LPARAM(static_cast<LPARAM>(wp)), GET_Y_LPARAM(static_cast<LPARAM>(wp))};
+void RemoteWindow::send_wheel(WPARAM wp, LPARAM lp) {
+    // 滚轮消息的坐标是屏幕坐标，且在 **lParam** 里（wParam 只有滚轮增量与按键掩码
+    // —— 2026-09-29 修：此前从 wp 取坐标，发往远端的落点一直是 (±120, 按键掩码)，
+    // 滚轮"能动"但位置与光标无关）。需要先转成客户区坐标。
+    POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
     ::ScreenToClient(hwnd_, &pt);
 
     int rx = 0;

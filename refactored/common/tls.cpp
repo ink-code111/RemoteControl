@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <vector>
@@ -216,7 +217,13 @@ bool ensure_self_signed_cert(const std::string& cert_file, const std::string& ke
         return false;
     }
     serial_raw[0] &= 0x7F; // 保证是正整数
-    long serial = 0;
+    // 【2026-09-29 修】累加必须用 64 位无符号：Windows 是 LLP64，`long` 只有 32 位，
+    // 8 字节随机数的高 4 字节会被静默移出（`&= 0x7F` 的符号位处理恰好落在被丢掉的
+    // 字节上），实际只剩低 4 字节参与 —— 约 50% 概率产出**负数**序列号（违反 RFC 5280
+    // 要求序列号为正），且有符号左移溢出本身是 UB。这份代码只在 LP64 平台碰巧是对的，
+    // 而本项目 Windows-only。配套用 ASN1_INTEGER_set_uint64（它才收 64 位；
+    // 老的 ASN1_INTEGER_set 收 long，在 Windows 上同样是 32 位）。
+    uint64_t serial = 0;
     for (unsigned char b : serial_raw) {
         serial = (serial << 8) | b;
     }
@@ -224,7 +231,7 @@ bool ensure_self_signed_cert(const std::string& cert_file, const std::string& ke
         serial = 1;
     }
     asn1_int_ptr serial_asn1(::ASN1_INTEGER_new(), ::ASN1_INTEGER_free);
-    if (!serial_asn1 || ::ASN1_INTEGER_set(serial_asn1.get(), serial) != 1 ||
+    if (!serial_asn1 || ::ASN1_INTEGER_set_uint64(serial_asn1.get(), serial) != 1 ||
         ::X509_set_serialNumber(cert.get(), serial_asn1.get()) != 1) {
         if (error) {
             *error = "设置序列号失败: " + last_error();
